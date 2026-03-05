@@ -4,6 +4,16 @@ Distribution and packing plugin for [genart.dev](https://genart.dev) — spatial
 
 Part of [genart.dev](https://genart.dev) — a generative art platform with an MCP server, desktop app, and IDE extensions.
 
+## Examples
+
+![Algorithm gallery](images/algorithm-gallery.png)
+
+All 10 distribution algorithms side by side — from structured grids to quasi-random sequences.
+
+![Circle packing](images/circle-packing.png)
+
+Non-overlapping circle packing via trial-and-reject with variable radii.
+
 ## Install
 
 ```bash
