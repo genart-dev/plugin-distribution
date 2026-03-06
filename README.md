@@ -6,13 +6,15 @@ Part of [genart.dev](https://genart.dev) — a generative art platform with an M
 
 ## Examples
 
-![Algorithm gallery](images/algorithm-gallery.png)
+![Algorithm gallery](test-renders/algorithm-gallery.png)
 
 All 10 distribution algorithms side by side — from structured grids to quasi-random sequences.
 
-![Circle packing](images/circle-packing.png)
+![Circle packing](test-renders/circle-packing.png)
 
 Non-overlapping circle packing via trial-and-reject with variable radii.
+
+Source files: [algorithm-gallery.genart](test-renders/algorithm-gallery.genart) · [circle-packing.genart](test-renders/circle-packing.genart)
 
 ## Install
 
