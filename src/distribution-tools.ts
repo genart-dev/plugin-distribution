@@ -90,8 +90,8 @@ export const distributePointsTool: McpToolDefinition = {
         type: "string",
         enum: [
           "poisson-disk", "phyllotaxis", "hex-grid", "tri-grid", "jittered-grid",
-          "r2-sequence", "halton", "best-candidate",
-          "latin-hypercube", "lloyd-relax",
+          "r2-sequence", "halton", "sobol", "best-candidate",
+          "latin-hypercube", "lloyd-relax", "weighted",
         ],
         description: "Distribution algorithm",
       },
@@ -236,6 +236,133 @@ export const distributePointsTool: McpToolDefinition = {
         const cellW = width / n, cellH = height / n;
         for (let i = 0; i < n; i++) {
           points.push({ x: (xs[i]! + rng()) * cellW, y: (ys[i]! + rng()) * cellH, size: 1, index: i });
+        }
+        break;
+      }
+
+      case "lloyd-relax": {
+        // Lloyd relaxation: start with random points, iteratively move each
+        // to the centroid of its Voronoi cell (approximated by nearest-neighbor)
+        const n = params.count ?? 100;
+        const iterations = params.iterations ?? 10;
+        const pts2d: Array<[number, number]> = [];
+        for (let i = 0; i < n; i++) {
+          pts2d.push([rng() * width, rng() * height]);
+        }
+
+        for (let iter = 0; iter < iterations; iter++) {
+          // Approximate Voronoi centroids via grid sampling
+          const sampleRes = Math.min(200, Math.max(width, height));
+          const stepX = width / sampleRes;
+          const stepY = height / sampleRes;
+          const sums = new Float64Array(n * 2);
+          const counts = new Float64Array(n);
+
+          for (let sy = 0; sy < sampleRes; sy++) {
+            const sampleY = (sy + 0.5) * stepY;
+            for (let sx = 0; sx < sampleRes; sx++) {
+              const sampleX = (sx + 0.5) * stepX;
+              // Find nearest point
+              let bestDist = Infinity;
+              let bestIdx = 0;
+              for (let pi = 0; pi < n; pi++) {
+                const dx = sampleX - pts2d[pi]![0];
+                const dy = sampleY - pts2d[pi]![1];
+                const d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; bestIdx = pi; }
+              }
+              sums[bestIdx * 2] = sums[bestIdx * 2]! + sampleX;
+              sums[bestIdx * 2 + 1] = sums[bestIdx * 2 + 1]! + sampleY;
+              counts[bestIdx] = counts[bestIdx]! + 1;
+            }
+          }
+
+          // Move each point toward its cell centroid
+          for (let i = 0; i < n; i++) {
+            if (counts[i]! > 0) {
+              pts2d[i]![0] = sums[i * 2]! / counts[i]!;
+              pts2d[i]![1] = sums[i * 2 + 1]! / counts[i]!;
+            }
+          }
+        }
+
+        for (let i = 0; i < n; i++) {
+          points.push({ x: pts2d[i]![0], y: pts2d[i]![1], size: 1, index: i });
+        }
+        break;
+      }
+
+      case "sobol": {
+        // Sobol sequence (2D, direction numbers for first two dimensions)
+        const n = params.count ?? 100;
+        const dirX = [1 << 31, 1 << 30, 1 << 29, 1 << 28, 1 << 27, 1 << 26, 1 << 25, 1 << 24,
+                       1 << 23, 1 << 22, 1 << 21, 1 << 20, 1 << 19, 1 << 18, 1 << 17, 1 << 16,
+                       1 << 15, 1 << 14, 1 << 13, 1 << 12, 1 << 11, 1 << 10, 1 << 9, 1 << 8,
+                       1 << 7, 1 << 6, 1 << 5, 1 << 4, 1 << 3, 1 << 2, 1 << 1, 1 << 0];
+        // Second dimension uses van der Corput in base 2 with different scramble
+        let sx = 0;
+        function rightmostZero(n: number): number {
+          let c = 0;
+          while ((n & 1) === 1) { n >>= 1; c++; }
+          return c;
+        }
+        for (let i = 0; i < n; i++) {
+          if (i === 0) {
+            sx = 0;
+          } else {
+            sx ^= dirX[rightmostZero(i)]!;
+          }
+          // Second dimension: Van der Corput base 3 for low correlation
+          let f2 = 1 / 3, v2 = 0, ii = i + 1;
+          while (ii > 0) { v2 += f2 * (ii % 3); ii = Math.floor(ii / 3); f2 /= 3; }
+
+          points.push({
+            x: ((sx >>> 0) / 4294967296) * width,
+            y: v2 * height,
+            size: 1,
+            index: i,
+          });
+        }
+        break;
+      }
+
+      case "weighted": {
+        // Weighted distribution: rejection sampling from a density function
+        // params.weights is a 1D array representing a flattened 2D grid of densities
+        const n = params.count ?? 100;
+        const gridSize = params.gridSize ?? 10;
+        const weightData = params.weights as number[] | undefined;
+
+        // If no weights provided, use uniform
+        if (!weightData || weightData.length === 0) {
+          for (let i = 0; i < n; i++) {
+            points.push({ x: rng() * width, y: rng() * height, size: 1, index: i });
+          }
+          break;
+        }
+
+        // Normalize weights to find max
+        const maxW = Math.max(...weightData, 0.001);
+        const gw = Math.min(gridSize, weightData.length);
+        const gh = Math.ceil(weightData.length / gw);
+        const cellW = width / gw;
+        const cellH = height / gh;
+
+        let placed = 0;
+        let attempts = 0;
+        const maxAttempts = n * 50;
+        while (placed < n && attempts < maxAttempts) {
+          const x = rng() * width;
+          const y = rng() * height;
+          const gx = Math.min(gw - 1, Math.floor(x / cellW));
+          const gy = Math.min(gh - 1, Math.floor(y / cellH));
+          const wi = gy * gw + gx;
+          const density = (weightData[wi] ?? 0) / maxW;
+          if (rng() < density) {
+            points.push({ x, y, size: 1, index: placed });
+            placed++;
+          }
+          attempts++;
         }
         break;
       }

@@ -7,7 +7,7 @@ import { distributionMcpTools } from "./distribution-tools.js";
 const distributionPlugin: DesignPlugin = {
   id: "distribution",
   name: "Distribution & Packing",
-  version: "0.1.0",
+  version: "0.2.0",
   tier: "free",
   description:
     "Spatial distribution algorithms (Poisson disk, phyllotaxis, hex grid, DLA, WFC, and more) plus circle/rect packing. Includes guide layers for non-destructive distribution previews.",
